@@ -150,12 +150,12 @@ def multi_gif():
     img.save(fp=fp_out, format='GIF', append_images=imgs,
              save_all=True, duration=100, loop=0)
 
-calc_mode(1)
+# calc_mode(1)
 if __name__ == '__main__':
-    # f_max, pxx, f = schlieren_psd()
+    f_max, pxx, f = schlieren_psd()
     # img,lst = schlieren_energy(pxx,f)
 
-    output = schlieren_wiener()
+    # output = schlieren_wiener()
     # f,p_filt,p_noise = zip(*output)
     #
     # p_noise = np.array(p_noise)
