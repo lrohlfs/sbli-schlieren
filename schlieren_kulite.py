@@ -96,7 +96,7 @@ def calc_mode(k):
     U_m = np.mean(U1, axis=0)
     plt.imshow(U_m.reshape(128, 224), cmap='RdBu', vmin=-100, vmax=100)
     plt.tight_layout()
-    plt.savefig(path+'PODk' + str(k))
+    plt.savefig(path + 'PODk' + str(k))
     # for i in range(200):
     #     plt.imshow(U1[i, :].reshape(128, 224), cmap='RdBu',vmin = -1000,vmax = 1000)
     #     if i == 0:
@@ -118,37 +118,39 @@ def calc_mode(k):
 
 
 def multi_gif():
-    #### GIF From Multiple Plots
+    ### GIF From Multiple Plots
 
-    # fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    fig, (ax1,ax2,ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    for i in range(0, 2000, 4):
+        ax1.imshow(img_wn[2*L + i, :, :], cmap='Greys', vmin=-750, vmax=750)
+        ax2.imshow(img_f[2*L + i, :, :] , cmap='Greys_r', vmin=-750, vmax=750)
+        ax3.imshow(img_wf[2*L + i, :, :], cmap='Greys_r', vmin=-750, vmax=750)
+        # ax3.imshow(img_wn[10000 + i, :, :], cmap='nipy_spectral', vmin=-400, vmax=400)
+        plt.tight_layout()
+        plt.savefig(path + 'out/temp_' + format(i, '04d'))
+        ax1.cla()
+        ax2.cla()
+        ax3.cla()
+        print(i)
+
+    # fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
     # for i in range(200):
-    #     ax1.imshow(img_snippet[:, :, L + i], cmap='RdBu', vmin=-50, vmax=50)
-    #     ax2.imshow(noise_snippet[:, :, i], cmap='RdBu', vmin=-10, vmax=10)
-    #     ax3.imshow(filt_snippet[:, :, i], cmap='RdBu', vmin=-50, vmax=50)
+    #     ax1.imshow(U1[i, :].reshape(128, 224), cmap='RdBu', vmin=-25, vmax=25)
     #     plt.tight_layout()
     #     plt.savefig(path + 'out/temp_' + format(i, '03d'))
     #     ax1.cla()
-    #     ax2.cla()
-    #     ax3.cla()
     #     print(i)
-
-    fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
-    for i in range(200):
-        ax1.imshow(U1[i, :].reshape(128, 224), cmap='RdBu', vmin=-25, vmax=25)
-        plt.tight_layout()
-        plt.savefig(path + 'out/temp_' + format(i, '03d'))
-        ax1.cla()
-        print(i)
 
     import glob
     from PIL import Image
     fp_in = path + 'out/temp_*.png'
-    fp_out = path + 'PODk2.gif'
+    fp_out = path + 'wiener_test_3.gif'
 
     # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif
     img, *imgs = [Image.open(f) for f in sorted(glob.glob(fp_in))]
     img.save(fp=fp_out, format='GIF', append_images=imgs,
              save_all=True, duration=100, loop=0)
+
 
 # calc_mode(1)
 if __name__ == '__main__':
@@ -164,7 +166,10 @@ if __name__ == '__main__':
     # plt.plot(images[1746, L:])
     # plt.plot(p_filt[1746,:])
     #
-    # plt.plot(p_noise / p_noise.max())
+    plt.plot(noise[:, 64, 40] / noise[:, 64, 40].max())
+    plt.plot(img[:, 64, 40] / img[:, 64, 40].max())
+    plt.plot(kulite / kulite.min())
+
     # plt.plot(p_ref[L:] / p_ref.max())
     # plt.plot(images_fluc[1940, L:]/images_fluc[1940, L:].max())
     # plt.plot(output[1940,0,:]/output[1940, 0,:].max())

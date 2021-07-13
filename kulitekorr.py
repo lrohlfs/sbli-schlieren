@@ -389,7 +389,7 @@ def Wiener_par(p_main):
     return f, p_filtered[L:], p_noise[L:]
 
 
-filt = signal.butter(50, 10000, 'lp', output='sos', fs=f_s)
+filt = signal.butter(50, 25000, 'lp', output='sos', fs=f_s)
 filtered1 = signal.sosfilt(filt, data)
 
 # p_main = test_norm2[100:]#test[91536,:]
@@ -454,9 +454,11 @@ export_list2 = [p_noise[:,100:1000].reshape(35,100,900)[:, :, i] for i in range(
 export_list = [noise_snippet[:, :, i] for i in range(0, 2000)]
 export_list = [filt_snippet[:, :, i] for i in range(0, 2000)]
 export_list = [img_snippet[:, :, i] for i in range(0, 2000)]
+export = [img_f[i,:,:]+img_m for i in range(2000,3000)]
+path = '/home/lennart/Data/'
 import imageio
 
-imageio.mimsave(path + 'wiener_raw.gif', export_list, fps=10)
+imageio.mimsave(path + 'filter_raw2000.gif', export, fps=100)
 
 
 def multi_gif()
@@ -476,10 +478,21 @@ def multi_gif()
         ax3.cla()
         print(i)
 
+path = '/home/lennart/Data/out/'
+fig,ax1 = plt.subplots(figsize = (6,5))
+i = 0
+for element in export:
+    ax1.imshow(element,vmin = -20000,vmax = 20000,cmap = 'RdBu')
+    plt.tight_layout()
+    plt.savefig(path + 'temp_' + format(i, '03d'))
+    ax1.cla()
+    i=i+1
+    print(i)
+
 
     import glob
     from PIL import Image
-    fp_in = path+'out/temp_*.png'
+    fp_in = path+'temp_*.png'
     fp_out = path+'Wiener_Multi.gif'
 
     # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif
