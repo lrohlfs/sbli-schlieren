@@ -133,6 +133,13 @@ def multi_gif():
         ax3.cla()
         print(i)
 
+    fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
+    for i in range(0, 2000, 4):
+        ax1.imshow(img_f[2 * L + i, :, :], cmap='Greys', vmin=-2800, vmax=2800)
+        plt.tight_layout()
+        plt.savefig(path + 'out/temp_' + format(i, '04d'),dpi = 400)
+        ax1.cla()
+        print(i)
     # fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
     # for i in range(200):
     #     ax1.imshow(U1[i, :].reshape(128, 224), cmap='RdBu', vmin=-25, vmax=25)
@@ -140,16 +147,17 @@ def multi_gif():
     #     plt.savefig(path + 'out/temp_' + format(i, '03d'))
     #     ax1.cla()
     #     print(i)
+    import opencv
 
     import glob
     from PIL import Image
     fp_in = path + 'out/temp_*.png'
-    fp_out = path + 'wiener_test_3.gif'
+    fp_out = path + 'lp_fluc.gif'
 
     # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif
     img, *imgs = [Image.open(f) for f in sorted(glob.glob(fp_in))]
     img.save(fp=fp_out, format='GIF', append_images=imgs,
-             save_all=True, duration=100, loop=0)
+             save_all=True, duration=50, loop=0)
 
 
 # calc_mode(1)

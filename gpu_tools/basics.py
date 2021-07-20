@@ -7,7 +7,10 @@ import cusignal
 
 from scipy import signal
 from signal_analysis import wiener, wiener_gpu
-path = '/home/lennart/Data/'
+# path = '/home/lennart/Data/'
+path = 'I:/002Messdaten/Schlieren/Korrelation/V2/'
+
+
 debug = 1
 files = sorted(os.listdir(path+'Cine1/'))
 
@@ -18,7 +21,7 @@ kulite = np.load(path+'Kulite_Korr_Series.npy')[0, :]
 # img_m = np.mean(img_f,axis=0).astype('int16')
 # img_f = np.subtract(img_f,img_m)
 img_f = np.load(path+'Cine1_fluc.npy')
-
+img_f = np.load(path+'lp_filtered_fluc.npy',allow_pickle=True)[0]
 
 #plt.imshow(img[1000,:,:])
 
@@ -159,9 +162,9 @@ ax3.imshow(img_wf[5000,:,:],cmap='Greys_r')
 
 
 def compare_psd(x1,y1,x2,y2):#
-    pxx, _, f = psd(kulite / kulite.max(), 100000, 2000)
-    # pxx,_,f=psd(img_f[:,x1,y1]/(img_wf[:,x1,y1].max()),100000,2000)
-    pxx1,_,f=psd(img_f[:,x2,y2]/(img_wf[:,x2,y2].max()),100000,2000)
+    # pxx, _, f = psd(kulite / kulite.max(), 100000, 2000)
+    pxx,_,f=psd(img_f[:,x1,y1]/(img_f[:,x1,y1].max()),100000,2000)
+    pxx1,_,f=psd(img_f[:,x2,y2]/(img_f[:,x2,y2].max()),100000,2000)
 
     fig,(ax1,ax2) = plt.subplots(2,1,figsize = (5,12))
     ax1.semilogx(f,4*f*pxx)
@@ -170,10 +173,51 @@ def compare_psd(x1,y1,x2,y2):#
 
     ax2.loglog(f,4*pxx)
     ax2.loglog(f,pxx1)
-
+    plt.show()
 compare_psd(120,97,119,97)
 
+def plot_psd_forschungstag():
+    pxx1,_,f = psd(p_main,100000,2000)
+    pxx2,_,f = psd(kulite,100000,2000)
 
+    std1 = np.std(p_main)
+    std2 = np.std(kulite)
+
+    fig1, ax1 = plt.subplots(figsize=(4, 3))
+    ax1.set_xlim(100,50000)
+    # ax1.set_ylim(0,0.5)
+
+    ax1.loglog(f, pxx1, 'black', linewidth=1)
+    # ax1.loglog(f, pxx2, 'red', linewidth=1)
+    ax1.grid(axis='both', which='major', alpha=0.5, linestyle='--')
+    plt.xlabel('frequency [Hz]')
+    plt.ylabel('$PSD(f)$')
+
+    plt.tight_layout()
+    plt.savefig(path+'psd1.png',dpi = 300)
+
+    fig2, ax1 = plt.subplots(figsize=(4, 3))
+    ax1.set_xlim(100,50000)
+    # ax1.set_ylim(0,0.5)
+    ax1.semilogx(f, f*pxx1/std1, 'black', linewidth=1)
+    ax1.grid(axis='both', which='major', alpha=0.5, linestyle='--')
+    plt.xlabel('frequency [Hz]')
+    plt.ylabel('$f*PSD(f)/\sigma^2$')
+    plt.tight_layout()
+    plt.savefig(path+'psd2.png',dpi = 300)
+
+    fig3, ax1 = plt.subplots(figsize=(4, 3))
+    ax1.set_xlim(100,50000)
+    # ax1.set_ylim(0,0.5)
+
+    ax1.semilogx(f, f*pxx1/std1, 'black', linewidth=1)
+    ax1.semilogx(f, 3*f*pxx2/std2, 'red', linewidth=1)
+    ax1.grid(axis='both', which='major', alpha=0.5, linestyle='--')
+    plt.xlabel('frequency [Hz]')
+    plt.ylabel('$f*PSD(f)/\sigma^2$')
+
+    plt.tight_layout()
+    plt.savefig(path+'psd3.png',dpi = 300)
 
 #
 # #img_mean = np.mean(img,axis = 0)
