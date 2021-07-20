@@ -1,13 +1,15 @@
-## Data Analysis Functions
+# Data Analysis Functions
 import time
 import numpy as np
 from scipy import signal, stats
-from scipy.linalg import toeplitz, solve_toeplitz
-import cupy as cp
-import cusignal
-import cupyx.scipy as sp
-# import scipy as sp
-from cupyx.time import repeat
+from scipy.linalg import solve_toeplitz
+
+try:
+    import cupy as cp
+    import cusignal
+    import cupyx.scipy as sp
+finally:
+    pass
 
 
 def psd(p_main, f_s, segments):
@@ -15,7 +17,7 @@ def psd(p_main, f_s, segments):
 
     f, pxx = signal.welch(p_main, f_s, nperseg=segments, scaling='density')
     f_max = (f[(f * pxx).argmax()])
-    return pxx, f_max, f
+    return pxx, f, f_max
 
 
 def cohere(p_main, p_ref, f_s, segments):
@@ -100,29 +102,28 @@ def wiener_gpu(p_main, p_ref, L, p_ref_array):
     # print('Done2in%6.2f secs' % (t1 - t0))
     return p_noise.get(), p_filtered.get()
 
-
-def wiener_gpu_3D(p_main, p_ref, L):
-    Ns = p_main.shape[0]
-
-    g_cc = cusignal.correlate(p_main, p_ref)
-    g = g_cc[Ns - 1:Ns + L - 1]
-
-    r_ac = cusignal.correlate(p_ref, p_ref)
-    r = r_ac[Ns - 1:Ns + L - 1]
-
-    RR = sp.linalg.toeplitz(r.T)
-    f = np.linalg.solve(RR.get(), g.get())
-    p_noise = np.zeros(Ns)
-
-    p_ref = p_ref.get()
-
-    def calc(p_noise, f, p_ref, L, Ns):
-        for n in range(L, Ns, 1):
-            p_noise[n - 1] = np.dot(f, p_ref[n - L:n][::-1])  # p_sum
-        return p_noise
-
-    p_noise = calc(p_noise, f, p_ref, L, Ns)
-
-    # p_filtered = np.subtract(p_main.get(), p_noise)
-
-    return p_noise[L:]
+# def wiener_gpu_3D(p_main, p_ref, L):
+#     Ns = p_main.shape[0]
+#
+#     g_cc = cusignal.correlate(p_main, p_ref)
+#     g = g_cc[Ns - 1:Ns + L - 1]
+#
+#     r_ac = cusignal.correlate(p_ref, p_ref)
+#     r = r_ac[Ns - 1:Ns + L - 1]
+#
+#     RR = sp.linalg.toeplitz(r.T)
+#     f = np.linalg.solve(RR.get(), g.get())
+#     p_noise = np.zeros(Ns)
+#
+#     p_ref = p_ref.get()
+#
+#     def calc(p_noise, f, p_ref, L, Ns):
+#         for n in range(L, Ns, 1):
+#             p_noise[n - 1] = np.dot(f, p_ref[n - L:n][::-1])  # p_sum
+#         return p_noise
+#
+#     p_noise = calc(p_noise, f, p_ref, L, Ns)
+#
+#     # p_filtered = np.subtract(p_main.get(), p_noise)
+#
+#     return p_noise[L:]
