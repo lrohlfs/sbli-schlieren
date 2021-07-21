@@ -1,12 +1,17 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-import cupy as cp
-import cusignal
-# import skimage.io as skio
-
 from scipy import signal
 from signal_analysis import wiener, wiener_gpu
+
+try:
+    import cupy as cp
+    import cusignal
+# import skimage.io as skio
+except:
+    gpu = 0
+
+
 path = '/home/lennart/Data/'
 debug = 1
 files = sorted(os.listdir(path+'Cine1/'))
