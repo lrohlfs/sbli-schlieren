@@ -28,25 +28,29 @@ class Schlieren(object):
         if name.endswith('npy'):
             try:
                 self.images = np.load(self.path + name)
-            finally:
+            except:
                 return print('%s could not be found. Check Path' % name)
 
         elif name.endswith('/'):
-            try:
-                files = sorted(os.listdir(self.path + name))[start:end]
-                self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
-                img_mean = np.mean(self.images, axis=0, dtype='int16')
-                self.images = np.subtract(self.images, img_mean)
-            finally:
-                return print('%s could not be found. Check Path' % name)
+            files = sorted(os.listdir(self.path + name))[start:end]
+            self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
+            img_mean = np.mean(self.images, axis=0, dtype='int16')
+            self.images = np.subtract(self.images, img_mean)
+            # try:
+            #     files = sorted(os.listdir(self.path + name))[start:end]
+            #     self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
+            #     img_mean = np.mean(self.images, axis=0, dtype='int16')
+            #     self.images = np.subtract(self.images, img_mean)
+            # except:
+            #     return print('%s could not be found. Check Path' % name)
 
         elif name.endswith('cine'):
             try:
                 raw = Cine(self.path + name)[start:end]
                 self.images = np.array(raw, dtype='int16')
                 self.img_mean = np.mean(self.images, axis=0, dtype='int16')
-                self.images = np.subtract(self.images, self.img_mean)
-            finally:
+                # self.images = np.subtract(self.images, self.img_mean)
+            except:
                 pass
             # finally:
             #     return print('%s could not be found. Check Path' % name)
