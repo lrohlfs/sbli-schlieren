@@ -1,7 +1,9 @@
-import numpy as np
 import os
+
+import numpy as np
 from matplotlib import pyplot as plt
 from numpy import ndarray
+from pims import Cine
 
 
 class Schlieren(object):
@@ -12,7 +14,9 @@ class Schlieren(object):
         # Definitions
         self.path = path
         self.fs = 100000
+
         self.gpu = 1
+        self.img_mean = np.array([])
         self.pxx = np.array([])
         self.f = np.array([])
         self.coh = np.array([])
@@ -20,15 +24,36 @@ class Schlieren(object):
         return
 
     def load(self, name, start=0, end=None, fs=100000):
-        # Load schlieren images either from npy file or loose files in folder.
-        try:
-            self.images = np.load(self.path + name)
+        # Load schlieren images either processed from npy files or from cine or loose files in folder.
+        if name.endswith('npy'):
+            try:
+                self.images = np.load(self.path + name)
+            finally:
+                return print('%s could not be found. Check Path' % name)
 
-        finally:
-            files = sorted(os.listdir(self.path + name))[start:end]
-            self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
-            img_mean = np.mean(self.images, axis=0, dtype='int16')
-            self.images = np.subtract(self.images, img_mean)
+        elif name.endswith('/'):
+            try:
+                files = sorted(os.listdir(self.path + name))[start:end]
+                self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
+                img_mean = np.mean(self.images, axis=0, dtype='int16')
+                self.images = np.subtract(self.images, img_mean)
+            finally:
+                return print('%s could not be found. Check Path' % name)
+
+        elif name.endswith('cine'):
+            try:
+                raw = Cine(self.path + name)[start:end]
+                self.images = np.array(raw, dtype='int16')
+                self.img_mean = np.mean(self.images, axis=0, dtype='int16')
+                self.images = np.subtract(self.images, self.img_mean)
+            finally:
+                pass
+            # finally:
+            #     return print('%s could not be found. Check Path' % name)
+
+
+        else:
+            print('Filetype unknown. Check if method is supported')
         self.fs = fs
         return
 
@@ -55,6 +80,9 @@ class Schlieren(object):
                         nperseg=segments)
             self.pxx = pxx_gpu.get()
             self.f = f_gpu.get()
+            del pxx_gpu
+            del f_gpu
+            del img_gpu
 
             return
 
@@ -83,23 +111,26 @@ class Schlieren(object):
         i = int(np.argwhere(self.f == lf_th))
         j = int(np.argwhere(self.f == mf_th))
 
-        lf = np.sum(self.psd[:i, :, :], axis=0)
-        mf = np.sum(self.psd[i:j, :, :], axis=0)
-        hf = np.sum(self.psd[j:, :, :], axis=0)
+        lf = np.sum(self.pxx[:i, :, :], axis=0)
+        mf = np.sum(self.pxx[i:j, :, :], axis=0)
+        hf = np.sum(self.pxx[j:, :, :], axis=0)
 
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
 
-        p1 = ax1.imshow(lf * 100 / lf.max(), cmap='nipy_spectral', vmin=0, vmax=100)
-        ax1.set_title('LF Content (<1000Hz)')
-        ax2.imshow(mf * 100 / mf.max(), cmap='nipy_spectral', vmin=0, vmax=100)
-        ax2.set_title('MF Content (1000Hz - 10000Hz)')
-        ax3.imshow(hf * 100 / hf.max(), cmap='nipy_spectral', vmin=0, vmax=100)
-        ax3.set_title('HF Content (>10000Hz)')
+        p1 = ax1.imshow(lf, cmap='nipy_spectral')
+        ax1.set_title('LF Content (<%dHz)' % lf_th)
+        fig.colorbar(p1, ax=ax1, shrink=0.75)
+        p2 = ax2.imshow(mf, cmap='nipy_spectral')
+        ax2.set_title('MF Content (%dHz - %dHz)' % (lf_th, mf_th))
+        fig.colorbar(p2, ax=ax2, shrink=0.75)
+        p3 = ax3.imshow(hf, cmap='nipy_spectral')
+        ax3.set_title('HF Content (>%dHz)' % mf_th)
+        fig.colorbar(p3, ax=ax3, shrink=0.75)
 
-        cb_ax = fig.add_axes([0.25, 0.1, 0.5, 0.03])
-        fig.colorbar(p1, cax=cb_ax, orientation='horizontal')
+        # cb_ax = fig.add_axes([0.25, 0.1, 0.5, 0.03])
+        # fig.colorbar(p1, cax=cb_ax, orientation='horizontal')
 
-        fig.suptitle('Contour shows summed up PSD content, based on 100k images captured at 100k fps, 10deg wedge')
+        fig.suptitle('Contour shows summed up PSD content')
         plt.tight_layout()
         plt.savefig(self.path + fname, dpi=300)
 
@@ -117,7 +148,7 @@ class Schlieren(object):
         if gpu == 0:
             cxx_gpu = cp.zeros((int(segments / 2 + 1), self.images.shape[1], self.images.shape[2]), dtype='f')
             f_gpu = cp.zeros(int(segments / 2 + 1), dtype='f')
-            ref = cp.tile(reference[:len(self.images.shape), None, None], (1, pixel, pixel))
+            ref = cp.tile(reference[:len(self.images), None, None], (1, pixel, pixel))
 
             for i in range(int(self.images.shape[1] / pixel)):
                 for j in range(int(self.images.shape[2] / pixel)):
@@ -131,7 +162,9 @@ class Schlieren(object):
 
             self.coh = cxx_gpu.get()
             self.f = f_gpu.get()
-
+            del cxx_gpu
+            del f_gpu
+            del img_gpu
             return
 
         else:
@@ -160,8 +193,8 @@ class Schlieren(object):
         lf = np.sum(self.coh[:i, :, :], axis=0)
 
         fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
-        ax1.imshow(lf / i, cmap='Greys', vmin=-0.05, vmax=0.3)
-        fig.suptitle('Contour shows summed up Coherence, based on 100k images captured at 100k fps, 10deg wedge')
+        ax1.imshow(lf / i, cmap='Greys', vmin=-0.05, vmax=0.6)
+        fig.suptitle('Contour shows summed up Coherence')
         plt.tight_layout()
         plt.savefig(self.path + fname, dpi=300)
 

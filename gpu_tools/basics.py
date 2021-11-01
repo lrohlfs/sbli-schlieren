@@ -17,12 +17,15 @@ debug = 1
 files = sorted(os.listdir(path+'Cine1/'))
 
 kulite = np.load(path+'Kulite_Korr_Series.npy')[0, :]
-# img_f = [plt.imread(path+'Cine1/'+file) for file in files[0:100000]]
-#
-# img_f = np.array(img_f,dtype='int16')
-# img_m = np.mean(img_f,axis=0).astype('int16')
+img_f = [plt.imread(path+'Cine1/'+file) for file in files[0:100000]]
+
+img_f = np.array(img_f,dtype='int16')
+img_m = np.mean(img_f,axis=0).astype('int16')
 # img_f = np.subtract(img_f,img_m)
 img_f = np.load(path+'Cine1_fluc.npy')
+kulite = kulite -np.mean(kulite)
+
+
 
 
 #plt.imshow(img[1000,:,:])
@@ -44,14 +47,15 @@ img_f = np.load(path+'Cine1_fluc.npy')
 
 
 # img_gpu = cusignal.get_shared_mem((img.shape[0],pixel,pixel),dtype = img.dtype)
-filt = signal.butter(50, 2000, 'lp', output='sos', fs=100000)
-#signal.sosfilt(filt, data)
+filt = signal.butter(50, 5000, 'lp', output='sos', fs=100000)
+kulite = signal.sosfilt(filt, kulite)
 pixel = 16
 segments = 2000
 # img_gpu = cp.asarray(img[:,0:100,0:100])
 
 pxx = cp.zeros((int(segments/2+1),img_f.shape[1],img_f.shape[2]),dtype = 'f')
 cxx = cp.zeros((int(segments/2+1),img_f.shape[1],img_f.shape[2]),dtype = 'f')
+pearson = cp.zeros((img_f.shape[1],img_f.shape[2]),dtype = 'f')
 ku = cp.tile(kulite[:len(img_f),None,None],(1,pixel,pixel))
 # img_f = np.zeros(img_f.shape,dtype='int16')
 
@@ -62,8 +66,8 @@ for i in range(int(img_f.shape[1]/pixel)):
         #test[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel]=img[:,i*pixel:(i+1)*pixel,j*pixel:(j+1)*pixel]
 
         img_gpu = img_f[:,i*pixel:(i+1)*pixel,j*pixel:(j+1)*pixel]
-        f,pxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel]= cusignal.welch(img_gpu,fs = 100000,axis = 0,nperseg = segments)
-        f, cxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.coherence(img_gpu,ku,fs = 100000,axis = 0,nperseg = segments)
+        # f,pxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel]= cusignal.welch(img_gpu,fs = 100000,axis = 0,nperseg = segments)
+        # f, cxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.coherence(img_gpu,ku,fs = 100000,axis = 0,nperseg = segments)
         # filtered = cusignal.sosfilt(filt,img_gpu,axis = 0)
         # img_f[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = filtered.get().astype('int16')
 #
@@ -85,38 +89,51 @@ j=int(np.argwhere(f==10000))
 k=int(np.argwhere(f==25000))
 
 
-fmax = np.max()
+# fmax = np.max()
 
 lf = np.sum(psd[:i,:,:],axis = 0)
 mf = np.sum(psd[i:j,:,:],axis = 0)
 hf = np.sum(psd[j:,:,:],axis = 0)
 
 lfc = np.sum(csd[:i,:,:],axis = 0)
+mfc = np.sum(csd[i:j,:,:],axis = 0)
+hfc = np.sum(csd[j:,:,:],axis = 0)
+
 #
 
+def plot_energy():
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
 
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    p1 = ax1.imshow(lf*100/lf.max(),cmap='nipy_spectral',vmin = 0,vmax=100)
+    ax1.set_title('LF Content (<1000Hz)')
+    ax2.imshow(mf*100/mf.max(),cmap='nipy_spectral',vmin = 0,vmax=100)
+    ax2.set_title('MF Content (1000Hz - 10000Hz)')
+    ax3.imshow(hf*100/hf.max(),cmap='nipy_spectral',vmin = 0,vmax=100)
+    ax3.set_title('HF Content (>10000Hz)')
 
-p1 = ax1.imshow(lf*100/lf.max(),cmap='nipy_spectral',vmin = 0,vmax=100)
-ax1.set_title('LF Content (<1000Hz)')
-ax2.imshow(mf*100/mf.max(),cmap='nipy_spectral',vmin = 0,vmax=100)
-ax2.set_title('MF Content (1000Hz - 10000Hz)')
-ax3.imshow(hf*100/hf.max(),cmap='nipy_spectral',vmin = 0,vmax=100)
-ax3.set_title('HF Content (>10000Hz)')
+    cb_ax = fig.add_axes([0.25, 0.1, 0.5, 0.03])
+    cbar = fig.colorbar(p1, cax=cb_ax, orientation='horizontal')
 
-cb_ax = fig.add_axes([0.25, 0.1, 0.5, 0.03])
-cbar = fig.colorbar(p1, cax=cb_ax, orientation='horizontal')
+    fig.suptitle('Contour shows summed up PSD content, based on 100k images captured at 100k fps, 10deg wedge')
+    plt.savefig(path + 'Energycontent1.png', dpi=300)
 
-fig.suptitle('Contour shows summed up PSD content, based on 100k images captured at 100k fps, 10deg wedge')
-plt.savefig(path + 'Energycontent.png', dpi=300)
+def plot_coherence():
+    fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
 
-
-plt.imshow(lfc/i,cmap='hot',vmin=0,vmax=0.3)
+    p1 = plt.imshow(lfc/i,cmap='Greys',vmin=-0.005,vmax=0.25)
+    # cb_ax = fig.add_axes([0.9, 0.25, 0.05, 0.7])
+    cbar = fig.colorbar(p1,ax=ax1,shrink=0.55)
+    plt.tight_layout()
+    plt.savefig(path + 'Coherence.png', dpi = 500)
 
 f_max = np.zeros((img_f.shape[1],img_f.shape[2]))
+ref = cp.asarray(kulite,dtype='f')
 for i in range(img_f.shape[1]):
     for j in range(img_f.shape[2]):
-        f_max[i,j] = (f[(f * psd[:,i,j]).argmax()])
+        main = cp.asarray(img_f[:,i,j],dtype = 'f')
+        cov_mat = cp.cov(main,ref)
+        pearson[i, j] = cov_mat[0,1]/(cov_mat[0,0]**0.5*cov_mat[1,1]**0.5)
+        # f_max[i,j] = (f[(f * psd[:,i,j]).argmax()])
 
 
 kulite = (kulite-np.mean(kulite)).astype('f')

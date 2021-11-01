@@ -22,7 +22,7 @@ class Kulite(object):
             self.data = np.load(self.path + name)[start:end]
 
         finally:
-            pass
+            return print('%s could not be found. Check Path' % name)
             # integrate h5 reading
 
         return
