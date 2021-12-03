@@ -17,6 +17,7 @@ class Schlieren(object):
 
         self.gpu = 1
         self.img_mean = np.array([])
+        self.img_size = (0, 0)
         self.pxx = np.array([])
         self.f = np.array([])
         self.coh = np.array([])
@@ -32,24 +33,21 @@ class Schlieren(object):
                 return print('%s could not be found. Check Path' % name)
 
         elif name.endswith('/'):
-            files = sorted(os.listdir(self.path + name))[start:end]
-            self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
-            img_mean = np.mean(self.images, axis=0, dtype='int16')
-            self.images = np.subtract(self.images, img_mean)
-            # try:
-            #     files = sorted(os.listdir(self.path + name))[start:end]
-            #     self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
-            #     img_mean = np.mean(self.images, axis=0, dtype='int16')
-            #     self.images = np.subtract(self.images, img_mean)
-            # except:
-            #     return print('%s could not be found. Check Path' % name)
+            try:
+                files = sorted(os.listdir(self.path + name))[start:end]
+                self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
+                self.img_mean = np.mean(self.images, axis=0, dtype='int16')
+                #self.images = np.subtract(self.images, self.img_mean)
+                self.img_size = self.img_mean.shape
+            except:
+                return print('%s could not be found. Check Path' % name)
 
         elif name.endswith('cine'):
             try:
                 raw = Cine(self.path + name)[start:end]
                 self.images = np.array(raw, dtype='int16')
                 self.img_mean = np.mean(self.images, axis=0, dtype='int16')
-                # self.images = np.subtract(self.images, self.img_mean)
+                self.images = np.subtract(self.images, self.img_mean)
             except:
                 pass
             # finally:
@@ -281,3 +279,11 @@ class Schlieren(object):
         ax2.loglog(f, pxx)
         ax2.loglog(f, pxx1)
         return
+
+    def canny_edge(self, start=0, end=None, par=(2, 50, 100)):
+        from skimage import feature
+        edges = []
+        imgs = self.images[start:end, :, :]
+        for img in imgs:
+            edges.append(feature.canny(img, sigma=par[0], low_threshold=par[1], high_threshold=par[2]))
+        return edges
