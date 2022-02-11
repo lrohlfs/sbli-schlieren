@@ -7,7 +7,7 @@ from scipy.linalg import solve_toeplitz
 try:
     import cupy as cp
     import cusignal
-    import cupyx.scipy as sp
+    # import cupyx.scipy as sp
 finally:
     pass
 

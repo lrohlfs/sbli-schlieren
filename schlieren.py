@@ -1,30 +1,41 @@
 import os
+import h5py
 
 import numpy as np
 from matplotlib import pyplot as plt
 from numpy import ndarray
 from pims import Cine
+from datetime import date
 
 
 class Schlieren(object):
     images: ndarray
 
-    def __init__(self, path):
+    def __init__(self, path, h5file='Results.h5', h5grp='Dez_2021/Control/Schlieren'):
 
         # Definitions
+        self.fname = None
         self.path = path
         self.fs = 100000
+
+        self.h5file = self.path + h5file
+        self.h5grp = h5grp
+        self.h5 = h5py.File(self.h5file, 'a')
 
         self.gpu = 1
         self.img_mean = np.array([])
         self.img_size = (0, 0)
         self.pxx = np.array([])
+        self.csd = np.array([])
+        self.phase = np.array([])
         self.f = np.array([])
         self.coh = np.array([])
 
         return
 
-    def load(self, name, start=0, end=None, fs=100000):
+    def load(self, name, start=0, end=None, fs=100000, h5save=True):
+        print(name)
+        self.fname = name
         # Load schlieren images either processed from npy files or from cine or loose files in folder.
         if name.endswith('npy'):
             try:
@@ -35,28 +46,89 @@ class Schlieren(object):
         elif name.endswith('/'):
             try:
                 files = sorted(os.listdir(self.path + name))[start:end]
-                self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='int16')
+                self.images = np.array([plt.imread(self.path + name + file) for file in files], dtype='uint8')
                 self.img_mean = np.mean(self.images, axis=0, dtype='int16')
-                #self.images = np.subtract(self.images, self.img_mean)
-                self.img_size = self.img_mean.shape
+                # self.images = np.subtract(self.images, self.img_mean)
             except:
                 return print('%s could not be found. Check Path' % name)
 
         elif name.endswith('cine'):
             try:
+                print('Cine detected')
                 raw = Cine(self.path + name)[start:end]
-                self.images = np.array(raw, dtype='int16')
-                self.img_mean = np.mean(self.images, axis=0, dtype='int16')
-                self.images = np.subtract(self.images, self.img_mean)
+                self.images = np.array(raw, dtype='uint8')
+                self.img_mean = np.mean(self.images, axis=0).astype('int16')
             except:
-                pass
+                print('something went wrong')
             # finally:
             #     return print('%s could not be found. Check Path' % name)
 
 
         else:
             print('Filetype unknown. Check if method is supported')
+            return
+        self.img_size = self.img_mean.shape
+        max_size = Cine(self.path + name).shape
+        if h5save:
+            try:
+                grp = self.h5.create_group(self.h5grp)
+            except:
+                grp = self.h5[self.h5grp]
+
+            self.savetoh5(self.images, 'img_raw')
+            self.savetoh5(self.img_mean, 'img_mean')
+
+            grp.attrs['Filename'] = name
+            grp.attrs['FPS'] = fs
+            grp.attrs['Start-End'] = [start, end]
+
         self.fs = fs
+        return
+
+    def load_h5(self):
+        self.images = self.h5[self.h5grp + '/img_raw']
+        self.img_mean = self.h5[self.h5grp + '/img_mean']
+        try:
+            self.img_fluc = self.h5[self.h5grp + '/img_fluc']
+        except:
+            pass
+
+        self.fs = self.h5[self.h5grp].attrs['FPS']
+        self.fname = self.h5[self.h5grp].attrs['Filename']
+        print(self.h5[self.h5grp].attrs['Start-End'])
+        return
+
+    def savetoh5(self, dset, dname):
+
+        try:
+            grp = self.h5.create_group(self.h5grp)
+        except:
+            grp = self.h5[self.h5grp]
+
+        try:
+            data = grp.create_dataset(dname, data=dset)
+        except:
+            del grp[dname]
+            data = grp.create_dataset(dname, data=dset)
+        data.attrs['Size'] = dset.shape
+        data.attrs['Last Modified'] = str(date.today()).replace("-", "_")
+        return
+
+    def loadfromh5(self, dname):
+        grp = self.h5[self.h5grp]
+        data = grp[dname]
+        return data
+
+    def calc_fluc(self, h5save=True):
+        self.img_fluc = np.subtract(self.images, self.img_mean)
+        if h5save:
+            grp = self.h5[self.h5grp]
+            try:
+                fluc = grp.create_dataset('img_fluc', data=self.img_fluc)
+            except:
+                del grp['img_fluc']
+                fluc = grp.create_dataset('img_fluc', data=self.img_fluc)
+                fluc.attrs['Size'] = self.img_fluc.shape
         return
 
     def psd(self, segments=2000, pixel=16):
@@ -69,12 +141,12 @@ class Schlieren(object):
             gpu = 0
 
         if gpu == 0:
-            pxx_gpu = cp.zeros((int(segments / 2 + 1), self.images.shape[1], self.images.shape[2]), dtype='f')
+            pxx_gpu = cp.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
             f_gpu = cp.zeros(int(segments / 2 + 1), dtype='f')
 
-            for i in range(int(self.images.shape[1] / pixel)):
-                for j in range(int(self.images.shape[2] / pixel)):
-                    img_gpu = cp.asarray(self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+            for i in range(int(self.img_fluc.shape[1] / pixel)):
+                for j in range(int(self.img_fluc.shape[2] / pixel)):
+                    img_gpu = cp.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
                     f_gpu, pxx_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.welch(
                         img_gpu,
                         fs=self.fs,
@@ -90,12 +162,12 @@ class Schlieren(object):
 
         else:
             from scipy import signal
-            pxx = np.zeros((int(segments / 2 + 1), self.images.shape[1], self.images.shape[2]), dtype='f')
+            pxx = np.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
             f = np.zeros(int(segments / 2 + 1), dtype='f')
 
-            for i in range(int(self.images.shape[1] / pixel)):
-                for j in range(int(self.images.shape[2] / pixel)):
-                    img = np.asarray(self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+            for i in range(int(self.img_fluc.shape[1] / pixel)):
+                for j in range(int(self.img_fluc.shape[2] / pixel)):
+                    img = np.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
                     f, pxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = signal.welch(img,
                                                                                                    fs=self.fs,
                                                                                                    axis=0,
@@ -148,13 +220,13 @@ class Schlieren(object):
             gpu = 0
 
         if gpu == 0:
-            cxx_gpu = cp.zeros((int(segments / 2 + 1), self.images.shape[1], self.images.shape[2]), dtype='f')
+            cxx_gpu = cp.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
             f_gpu = cp.zeros(int(segments / 2 + 1), dtype='f')
-            ref = cp.tile(reference[:len(self.images), None, None], (1, pixel, pixel))
+            ref = cp.tile(reference[:len(self.img_fluc), None, None], (1, pixel, pixel))
 
-            for i in range(int(self.images.shape[1] / pixel)):
-                for j in range(int(self.images.shape[2] / pixel)):
-                    img_gpu = cp.asarray(self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+            for i in range(int(self.img_fluc.shape[1] / pixel)):
+                for j in range(int(self.img_fluc.shape[2] / pixel)):
+                    img_gpu = cp.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
                     f_gpu, cxx_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.coherence(
                         img_gpu,
                         ref,
@@ -171,13 +243,13 @@ class Schlieren(object):
 
         else:
             from scipy import signal
-            cxx = np.zeros((int(segments / 2 + 1), self.images.shape[1], self.images.shape[2]), dtype='f')
+            cxx = np.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
             f = np.zeros(int(segments / 2 + 1), dtype='f')
-            ref = np.tile(reference[:len(self.images.shape), None, None], (1, pixel, pixel))
+            ref = np.tile(reference[:len(self.img_fluc.shape), None, None], (1, pixel, pixel))
 
-            for i in range(int(self.images.shape[1] / pixel)):
-                for j in range(int(self.images.shape[2] / pixel)):
-                    img = np.asarray(self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+            for i in range(int(self.img_fluc.shape[1] / pixel)):
+                for j in range(int(self.img_fluc.shape[2] / pixel)):
+                    img = np.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
                     f, cxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = signal.coherence(img,
                                                                                                        ref,
                                                                                                        fs=self.fs,
@@ -188,6 +260,107 @@ class Schlieren(object):
             self.f = f
 
             return
+
+    def coherence_test(self, reference, segments=2000, pixel=16):
+        # calculate coherence between each pixel of image and provided reference signal (e.g Kulite series)
+        try:
+            import cupy as cp
+            import cusignal
+
+        finally:
+            gpu = 0
+
+        if gpu == 0:
+            cxx_gpu = cp.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
+            f_gpu = cp.zeros(int(segments / 2 + 1), dtype='f')
+            ref = cp.tile(reference[:len(self.img_fluc), None, None], (1, pixel, pixel))
+
+            for i in range(int(self.img_fluc.shape[1] / pixel)):
+                for j in range(int(self.img_fluc.shape[2] / pixel)):
+                    img_gpu = cp.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+                    f_gpu, cxx_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.coherence(
+                        img_gpu,
+                        ref,
+                        fs=self.fs,
+                        axis=0,
+                        window='hamming',
+                        nperseg=segments,
+                    )
+
+            self.coh = cxx_gpu.get()
+            self.f = f_gpu.get()
+            del cxx_gpu
+            del f_gpu
+            del img_gpu
+            return
+
+        else:
+            from scipy import signal
+            cxx = np.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
+            f = np.zeros(int(segments / 2 + 1), dtype='f')
+            ref = np.tile(reference[:len(self.img_fluc.shape), None, None], (1, pixel, pixel))
+
+            for i in range(int(self.img_fluc.shape[1] / pixel)):
+                for j in range(int(self.img_fluc.shape[2] / pixel)):
+                    img = np.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+                    f, cxx[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = signal.coherence(img,
+                                                                                                       ref,
+                                                                                                       fs=self.fs,
+                                                                                                       axis=0,
+                                                                                                       nperseg=segments)
+
+            self.pxx = cxx
+            self.f = f
+
+            return
+
+    def spectral_complete(self, reference, segments=2000, pixel=16):
+        import cupy as cp
+        import cusignal
+
+        csd_gpu = cp.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='complex64')
+        pxx_gpu = cp.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
+        cxy_gpu = cp.zeros((int(segments / 2 + 1), self.img_fluc.shape[1], self.img_fluc.shape[2]), dtype='f')
+
+        f_gpu = cp.zeros(int(segments / 2 + 1), dtype='f')
+        ref = cp.tile(reference[:len(self.img_fluc), None, None], (1, pixel, pixel))
+
+        _, pyy_gpu = cusignal.welch(ref, fs=self.fs, axis=0, nperseg=segments)
+
+        for i in range(int(self.img_fluc.shape[1] / pixel)):
+            for j in range(int(self.img_fluc.shape[2] / pixel)):
+                img_gpu = cp.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+
+                f_gpu, pxx_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.welch(
+                    img_gpu,
+                    fs=self.fs,
+                    axis=0,
+                    nperseg=segments)
+                # print(pxx_gpu.shape)
+                f_gpu, csd_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = cusignal.csd(
+                    img_gpu,
+                    ref,
+                    fs=self.fs,
+                    axis=0,
+                    nperseg=segments)
+                # print(csd_gpu.dtype)
+                cxy_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = \
+                    abs(csd_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel]) ** 2 / \
+                    (pxx_gpu[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] * pyy_gpu)
+
+        self.f = f_gpu.get()
+        self.csd = csd_gpu.get()
+        self.phase = np.angle(self.csd)
+
+        self.pxx = pxx_gpu.get()
+        self.coh = cxy_gpu.get()
+
+        del cxy_gpu
+        del csd_gpu
+        del pxx_gpu
+        del f_gpu
+        del img_gpu
+        return
 
     def coherence_plot(self, lf_th=1000, fname='coherence.png'):
         # plot previously calculated coherence in the low frequency domain
@@ -212,23 +385,23 @@ class Schlieren(object):
             gpu = 0
 
         if keep_original == 1:
-            img_filtered = np.zeros(self.images.shape)
+            img_filtered = np.zeros(self.img_fluc.shape)
 
         filt = signal.butter(order, cutoff, 'lp', output='sos', fs=self.fs)
 
-        for i in range(int(self.images.shape[1] / pixel)):
-            for j in range(int(self.images.shape[2] / pixel)):
+        for i in range(int(self.img_fluc.shape[1] / pixel)):
+            for j in range(int(self.img_fluc.shape[2] / pixel)):
                 if gpu == 0:
-                    img = self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel]
+                    img = self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel]
                     filtered = signal.sosfilt(filt, img, axis=0)
                 else:
-                    img_gpu = cp.asarray(self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
+                    img_gpu = cp.asarray(self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel])
                     filtered = cusignal.sosfilt(filt, img_gpu, axis=0)
                 if keep_original == 1:
                     img_filtered[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = filtered.astype('int16')
 
                 else:
-                    self.images[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = filtered.astype('int16')
+                    self.img_fluc[:, i * pixel:(i + 1) * pixel, j * pixel:(j + 1) * pixel] = filtered.astype('int16')
 
         return img_filtered if keep_original == 1 else None
 
@@ -269,8 +442,8 @@ class Schlieren(object):
         # compares the Powerspectra at two different positions of the array
         from signal_analysis import psd as pwelch
 
-        pxx, _, f = pwelch(self.images[:, x1, y1] / (self.images[:, x1, y1].max()), self.fs, segments)
-        pxx1, _, f = pwelch(self.images[:, x2, y2] / (self.images[:, x2, y2].max()), self.fs, segments)
+        pxx, f, _ = pwelch(self.images[:, x1, y1] / (self.images[:, x1, y1].max()), self.fs, segments)
+        pxx1, f, _ = pwelch(self.images[:, x2, y2] / (self.images[:, x2, y2].max()), self.fs, segments)
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 12))
         ax1.semilogx(f, f * pxx)
@@ -287,3 +460,13 @@ class Schlieren(object):
         for img in imgs:
             edges.append(feature.canny(img, sigma=par[0], low_threshold=par[1], high_threshold=par[2]))
         return edges
+
+    def create_phaseaverage(self, f_phase):
+        orig_shape = self.images.shape
+        n_phases = int((orig_shape[0] / self.fs) * f_phase)
+        n_phasepoints = int(self.fs / f_phase)
+        self.images = np.asarray(self.images).reshape([n_phases, n_phasepoints, orig_shape[1], orig_shape[2]])
+        self.images_pa = np.mean(self.images, axis=0)
+        self.savetoh5(self.images_pa, 'images_pa')
+        self.h5[self.h5grp].attrs['f_phase'] = f_phase
+        return
